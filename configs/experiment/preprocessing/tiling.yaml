@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - _self_
+
+tile_size: 512
+stride: 256
+
+metadata:
+  description: |
+    Example of experiment config.
+    * Whatever repetitive is preconfigured in the `tiling.yaml` config, otherwise set to ???
+    * only things that alter between experiments should be configured here (i.e., filling missing ???)
+    * See [hydra](https://hydra.cc/docs/patterns/configuring_experiments/) for details

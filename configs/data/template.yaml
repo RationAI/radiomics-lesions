@@ -1,0 +1,9 @@
+name: template_dataset
+paths:
+  # path, dict or list of paths to the data storage
+mlflow_uris:
+  # whatever is relevant for this dataset. e.g.
+  dataframe: ...
+  tissue_masks: ...
+  qc_masks: ...
+# Add more data-related settings if needed
