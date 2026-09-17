@@ -1,6 +1,0 @@
-# @package _global_
-
-output_path: ${data_path}/qc_masks
-
-metadata:
-  run_name: QC Masks ${dataset.name}
