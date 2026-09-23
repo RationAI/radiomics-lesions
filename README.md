@@ -1,7 +1,7 @@
 # Longitudinal lesion classification
 
 PyTorch Lightning pipeline for one prediction per MRI scan: **healthy, PD, PSP**.
-Each dataset item is a complete lesion timeline from the root `manifest.json`.
+Each dataset item is a complete lesion timeline from the offline-preprocessed manifest.
 MRI scans use the pretrained **huggingbrain/Dinov3d-Neuro** backbone; radiation
 uses a trainable residual 3D CNN. A custom transformer packs all lesions in a
 batch into one sequence with a block-diagonal causal attention mask.
@@ -13,8 +13,7 @@ uv sync
 
 # Train, select the best validation checkpoint, then evaluate the test cohort.
 uv run python -m ml \
-  data.root=/mnt/projects/radiomics/raw_data/preprocessed \
-  data.cache_dir=/path/to/crop-cache \
+  data.manifest=/mnt/projects/radiomics/crops_192/manifest.json \
   trainer.accelerator=cuda trainer.precision=bf16-mixed \
   metadata.run_name=experiment-01
 
@@ -42,7 +41,7 @@ and each configured mode calls the corresponding Trainer method. The default
 For one mode, supply a single checkpoint path or `null` instead of a mapping.
 
 `data.root` defaults to the manifest's `dataset_root`. Paths resolve as
-`root / patient_id / registration_directory / filename`. Run from the repository
+`root / image_or_radiation_path`, using paths in the preprocessed manifest. Run from the repository
 root. Use `trainer.accelerator=cpu data.num_workers=0` on a CPU and `32-true`
 precision where BF16 is unavailable. Offline training accepts
 `model.encoder_checkpoint=/path/to/teacher_checkpoint.pth`. Fresh training loads
@@ -115,46 +114,40 @@ follow-up to define the crop of an earlier prediction.
 
 ## Physical preprocessing
 
-- Use the NIfTI affine as the source of physical geometry. Manifest bboxes are
-  XYZ voxels with an exclusive upper bound.
-- Convert the current scan's bbox voxel edges into physical coordinates, add
-  `margin_mm` on each side, and define a RAS-aligned **1 mm isotropic** output grid.
-- Minimum crop side is `crop_size` mm (96 by default). Expand to contain the bbox
-  plus context and round each side up to a multiple of the MRI encoder patch size,
-  16. Variable-size crops are encoded in groups of matching shapes. There is no
-  geometric stretching to force a large lesion into a fixed tensor.
-- MRI normalization uses whole-volume nonzero mean/std, computed in slabs and
-  retained in a bounded per-worker cache. Padding uses normalized minimum intensity.
-- Radiation is resampled directly from its own affine onto the planning/anchor
-  crop grid. Dose magnitudes are preserved using a **fixed** `dose_scale`, default
-  70 in the NIfTI's units. Set this appropriately if volumes use cGy or another
-  unit; dose is never standardized independently per patient.
-- NIfTI geometry is interpreted in millimeters, consistent with this manifest.
-- Training applies shared random spatial flips to the lesion's MRI and radiation
-  crops. Validation/test have no random augmentation. No future-scan union bbox,
-  label mask, or label text is supplied as an input feature.
+Run `scripts/preprocess_scans.py` once before training; configure its input manifest
+and output directory using the constants at the top. See
+[scripts/PREPROCESSING.md](scripts/PREPROCESSING.md) for the output format.
 
-`data.cache_dir` enables an atomic, disk-backed deterministic crop cache, keyed
-by source path/size/modification time, geometry, normalization version and dose
-scale. Augmentation happens after loading cached crops. Prefer uncompressed `.nii`
-for efficient memory-mapped reads. Keep the cache on fast local/shared storage;
-changing source files without changing their size or timestamp requires clearing
-that cache. Cache contents and prediction CSVs contain dataset-derived information.
+The script writes lesion-centered, RAS-aligned **192³ crops at 1 mm spacing**.
+MRI intensities are clipped to whole-scan 0.5th/99.5th percentiles, then normalized
+using the clipped whole-scan mean/std before resampling. Statistics include
+background zeros and are shared across lesions from the same scan.
+Dose crops align to the planning MRI grid (with the documented fallback when
+planning is absent) and retain their original intensity units.
+
+Training loads float32 NumPy arrays directly, without resampling, normalization,
+or cropping. Each batch stacks MRI and dose crops into separate tensors while
+preserving lesion timelines, scan IDs, and metadata. Radiation follows pretreatment
+scans and precedes follow-ups. The default manifest is
+`/mnt/projects/radiomics/crops_192/manifest.json`; override `data.manifest` to use
+another output and `data.root` if the saved arrays have moved. Patient splits and
+the current label mapping are unchanged.
 
 ## Training and outputs
 
 Defaults freeze the 93.7M-parameter MRI backbone and train its projection, radiation
 CNN, modality embeddings and a pre-normalized causal transformer. Fine-tuning is
-supported with a separate backbone learning rate and activation checkpointing.
-Encoder microbatches limit transient volume-encoder memory; they do not truncate
-the temporal sequence. Fine-tuning still retains/recomputes activations across the
-whole lesion batch, so reduce lesion batch size for long timelines.
+supported with a separate backbone learning rate.
+The encoders accept stacked fixed-size crops, and modality embeddings identify MRI
+and radiation tokens before temporal attention. Only MRI positions produce
+predictions and contribute to the loss. All scans in a lesion batch are encoded
+together; reduce lesion batch size for long timelines or limited GPU memory.
 
-Optimization uses AdamW, zero weight decay on biases/normalizations/tokens, linear
-warmup followed by cosine decay, gradient clipping and gradient accumulation.
-Inverse-frequency class weights are calculated **only from training scans**.
-Validation/test loss is unweighted cross-entropy; model selection and early stopping
-use macro-F1 over the three fixed classes. `mode=fit checkpoint=null` defers test access until a separate evaluation.
+Optimization uses AdamW and cosine scheduling with warmup, gradient clipping and
+gradient accumulation. Training and evaluation use unweighted cross-entropy with
+integer class labels. Best-checkpoint selection monitors `val/macro_f1`.
+Model hyperparameters are saved in checkpoints. `mode=fit checkpoint=null` defers
+test access until a separate evaluation.
 
 The MLflow run contains:
 
@@ -224,7 +217,7 @@ annotations document inputs and outputs; batches and configuration use ordinary
 dictionaries and Lightning hyperparameters. The pipeline assumes valid inputs
 and uses no custom validation or exception handling.
 
-- `ml/data/`: manifest loading, physical crops, packed batches and patient splits.
+- `ml/data/`: preprocessed array loading, packed batches and patient splits.
 - `ml/metrics/scan_classification.py`: TorchMetrics state, distributed scan
   deduplication, built-in classification metrics and mean cross-entropy.
 - `ml/callbacks/evaluation_writer.py`: prediction/report export. Numerical metrics

@@ -13,7 +13,6 @@ import torch
 from huggingface_hub import hf_hub_download
 from torch import Tensor, nn
 from torch.nn import functional as F
-from torch.utils.checkpoint import checkpoint
 
 
 REPO_ID = "huggingbrain/Dinov3d-Neuro"
@@ -122,7 +121,7 @@ class PatchEmbed3D(nn.Module):
 class DinoV3D(nn.Module):
     embed_dim = 792
 
-    def __init__(self, gradient_checkpointing: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
         self.mask_token = nn.Parameter(
@@ -132,7 +131,6 @@ class DinoV3D(nn.Module):
         self.rope_embed = AxialRoPE3D()
         self.blocks = nn.ModuleList([DinoBlock(self.embed_dim, 12) for _ in range(12)])
         self.norm = nn.LayerNorm(self.embed_dim, eps=1e-6)
-        self.gradient_checkpointing = gradient_checkpointing
 
     def forward_features(self, x: Tensor) -> dict[str, Tensor]:
         x = self.patch_embed.proj(x)
@@ -140,11 +138,7 @@ class DinoV3D(nn.Module):
         x = x.flatten(2).transpose(1, 2)
         x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
         for block in self.blocks:
-            x = (
-                checkpoint(block, x, rope, use_reentrant=False)
-                if self.gradient_checkpointing and self.training
-                else block(x, rope)
-            )
+            x = block(x, rope)
         x = self.norm(x)
         return {"x_norm_clstoken": x[:, 0], "x_norm_patchtokens": x[:, 1:]}
 

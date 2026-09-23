@@ -18,7 +18,7 @@ trainer:
       _target_: lightning.pytorch.callbacks.ModelCheckpoint
       save_top_k: 1
       save_last: true
-      monitor: validation/bPQ
+      monitor: val/macro_f1
       mode: max
     finetune:
       _target_: lightning.pytorch.callbacks.BackboneFinetuning
@@ -28,10 +28,9 @@ trainer:
 data:
   _target_: ml.data.DataModule
   manifest: manifest.json
+  root: /mnt/projects/radiomics/isotropic_crops_1mm # override when moving the preprocessed dataset
   batch_size: 2 # lesions, not scans
   num_workers: 4
-  crop_size: 96 # minimum physical side in mm; expanded to fit bbox + margin
-  target_spacing: 1.0 # isotropic spacing in mm; resampled to this spacing
 
 model:
   _target_: ml.meta_arch.MetaArch

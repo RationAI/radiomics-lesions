@@ -23,7 +23,7 @@ def read_manifest(path: str | Path) -> tuple[dict, list[dict]]:
                     "patient_id": patient["patient_id"],
                     "lesion_id": lesion["lesion_id"],
                     "scans": scans,
-                    "radiation": patient["radiation"],
+                    "radiation": lesion["radiation"],
                     "scan_ids": list(range(next_scan_id, next_scan_id + len(scans))),
                 }
             )
@@ -34,13 +34,14 @@ def read_manifest(path: str | Path) -> tuple[dict, list[dict]]:
 class DataModule(L.LightningDataModule):
     def __init__(
         self,
-        manifest: str | Path = "manifest.json",
+        manifest: str | Path = "/mnt/projects/radiomics/crops_192/manifest.json",
         root: str | Path | None = None,
         batch_size: int = 2,
         num_workers: int = 4,
     ) -> None:
         super().__init__()
         self.manifest = manifest
+        self.root = Path(root) if root is not None else None
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.label_map = DEFAULT_LABEL_MAP
@@ -58,14 +59,11 @@ class DataModule(L.LightningDataModule):
                 "val": order[n_train : n_train + n_val],
                 "test": order[n_train + n_val :],
             }
-        root = Path(manifest["dataset_root"])
+        root = self.root if self.root is not None else Path(manifest["dataset_root"])
         self.datasets = {
             split: LesionDataset(
                 [r for r in self.records if r["patient_id"] in group],
                 root,
-                manifest["registration_directory"],
-                label_map=self.label_map,
-                augment=split == "train",
             )
             for split, group in self.splits.items()
         }
@@ -79,33 +77,23 @@ class DataModule(L.LightningDataModule):
         ]
         return torch.bincount(torch.tensor(labels, dtype=torch.long), minlength=3)
 
-    def train_dataloader(self) -> DataLoader:
+    def _dataloader(self, split: str) -> DataLoader:
         return DataLoader(
-            self.datasets["train"],
+            self.datasets[split],
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=split == "train",
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
             pin_memory=torch.cuda.is_available(),
             collate_fn=pack_lesions,
-            drop_last=True,
+            drop_last=split == "train",
         )
+
+    def train_dataloader(self) -> DataLoader:
+        return self._dataloader("train")
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.datasets["val"],
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            persistent_workers=self.num_workers > 0,
-            pin_memory=torch.cuda.is_available(),
-            collate_fn=pack_lesions,
-        )
+        return self._dataloader("val")
 
     def test_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.datasets["test"],
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            pin_memory=torch.cuda.is_available(),
-            collate_fn=pack_lesions,
-        )
+        return self._dataloader("test")

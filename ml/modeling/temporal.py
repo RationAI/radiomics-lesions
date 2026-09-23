@@ -88,7 +88,12 @@ class CausalBlock(nn.Module):
 
 class PackedCausalTransformer(nn.Module):
     def __init__(
-        self, dim: int = 256, heads: int = 8, layers: int = 3, dropout: float = 0.1
+        self,
+        dim: int = 256,
+        heads: int = 8,
+        layers: int = 3,
+        dropout: float = 0.1,
+        num_classes: int = 3,
     ) -> None:
         super().__init__()
         self.dim = dim
@@ -96,7 +101,7 @@ class PackedCausalTransformer(nn.Module):
             [CausalBlock(dim, heads, dropout) for _ in range(layers)]
         )
         self.norm = nn.LayerNorm(dim)
-        self.head = nn.Linear(dim, 3)
+        self.head = nn.Linear(dim, num_classes)
 
     def forward(self, x: Tensor, lesion_ids: Tensor, positions: Tensor) -> Tensor:
         frequency = torch.exp(
