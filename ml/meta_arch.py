@@ -81,6 +81,15 @@ class MetaArch(lightning.LightningModule):
             },
             prog_bar=True,
         )
+        self.log_dict(
+            {
+                f"validation/{metric}/{class_name}": values[metric][index]
+                for metric in ("precision", "recall")
+                for index, class_name in enumerate(CLASS_NAMES)
+            },
+            on_step=False,
+            on_epoch=True,
+        )
         self.val_metrics.reset()
 
     def on_test_epoch_end(self) -> None:
@@ -91,6 +100,15 @@ class MetaArch(lightning.LightningModule):
                 for key in ("loss", "accuracy", "macro_f1", "balanced_accuracy")
             },
             prog_bar=True,
+        )
+        self.log_dict(
+            {
+                f"test/{metric}/{class_name}": values[metric][index]
+                for metric in ("precision", "recall")
+                for index, class_name in enumerate(CLASS_NAMES)
+            },
+            on_step=False,
+            on_epoch=True,
         )
         self.test_metrics.reset()
 
