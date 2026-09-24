@@ -38,10 +38,7 @@ class MetaArch(lightning.LightningModule):
 
     def forward(self, batch: dict) -> Tensor:
         """Encode stacked N,C,Z,Y,X crops and return one class-logit row per MRI."""
-        with torch.no_grad():
-            mri = self.backbone(batch["images"])
-
-        mri = self.proj(mri)
+        mri = self.proj(self.backbone(batch["images"]))
         dose = self.radiation_encoder(batch["doses"])
         mri = mri + self.modality_embedding.weight[0].to(mri.dtype)
         dose = dose.to(mri.dtype) + self.modality_embedding.weight[1].to(mri.dtype)
@@ -61,6 +58,7 @@ class MetaArch(lightning.LightningModule):
             loss,
             on_step=True,
             on_epoch=True,
+            prog_bar=True,
             batch_size=len(batch["labels"]),
         )
         return loss
