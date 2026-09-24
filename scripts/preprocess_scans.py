@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 MANIFEST_PATH = Path("manifest.json")
 DATASET_ROOT: Path | None = None  # None uses dataset_root from the manifest.
-OUTPUT_DIRECTORY = Path("/mnt/projects/radiomics/crops_192")
+OUTPUT_DIRECTORY = Path("/mnt/projects/radiomics/isotropic_crops_1mm")
 CROP_SIZE = 192
 SPACING_MM = 1.0
 CLIP_PERCENTILES = (0.5, 99.5)

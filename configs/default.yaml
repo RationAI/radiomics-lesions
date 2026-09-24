@@ -27,7 +27,7 @@ trainer:
 
 data:
   _target_: ml.data.DataModule
-  manifest: manifest.json
+  manifest: /mnt/projects/radiomics/isotropic_crops_1mm/manifest.json
   root: /mnt/projects/radiomics/isotropic_crops_1mm # override when moving the preprocessed dataset
   batch_size: 2 # lesions, not scans
   num_workers: 4
@@ -37,3 +37,5 @@ model:
 
 metadata:
   experiment_name: Radiomics Lesions
+  run_name: Training
+  description: ""
