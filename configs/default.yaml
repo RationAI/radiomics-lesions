@@ -4,9 +4,8 @@ defaults:
   - _self_
 
 seed: 0
-mode: [fit, test]
-checkpoint:
-  test: best
+mode: fit
+checkpoint: null
 
 trainer:
   precision: 16-mixed
@@ -31,6 +30,17 @@ data:
   root: /mnt/projects/radiomics/isotropic_crops_1mm # override when moving the preprocessed dataset
   batch_size: 2 # lesions, not scans
   num_workers: 4
+  augmentation:
+    _target_: ml.data.augmentation.LesionAugmentation
+    spatial_probability: 0.5
+    rotation_degrees: 180
+    translation_mm: 2.0
+    contrast_probability: 0.3
+    contrast_range: [0.9, 1.1]
+    noise_probability: 0.3
+    noise_std: 0.03 # whole-scan normalized MRI units
+    blur_probability: 0.15
+    blur_sigma_mm: [0.3, 0.7]
 
 model:
   _target_: ml.meta_arch.MetaArch

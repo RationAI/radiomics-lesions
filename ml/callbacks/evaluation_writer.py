@@ -19,9 +19,6 @@ class EvaluationWriter(Callback):
     ) -> None:
         self.rows.clear()
 
-    def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self.rows.clear()
-
     def on_validation_batch_end(
         self,
         trainer: Trainer,
@@ -33,17 +30,6 @@ class EvaluationWriter(Callback):
     ) -> None:
         if not trainer.sanity_checking:
             self.rows.extend(prediction_rows(outputs, batch["metadata"]))
-
-    def on_test_batch_end(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-        outputs: dict,
-        batch: dict,
-        batch_idx: int,
-        dataloader_idx: int = 0,
-    ) -> None:
-        self.rows.extend(prediction_rows(outputs, batch["metadata"]))
 
     def _write(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         if trainer.sanity_checking:
@@ -72,6 +58,3 @@ class EvaluationWriter(Callback):
         self, trainer: Trainer, pl_module: LightningModule
     ) -> None:
         self._write(trainer, pl_module, "val")
-
-    def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self._write(trainer, pl_module, "test")

@@ -5,9 +5,11 @@ import lightning as L
 import numpy as np
 import torch
 from torch import Tensor
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
-from ml.data.dataset import DEFAULT_LABEL_MAP, LesionDataset, pack_lesions
+from ml.data.augmentation import LesionAugmentation
+from ml.data.dataset import CLASS_NAMES, DEFAULT_LABEL_MAP, LesionDataset, pack_lesions
+from ml.data.sampling import StratifiedLesionBatchSampler
 
 
 def read_manifest(path: str | Path) -> tuple[dict, list[dict]]:
@@ -38,12 +40,14 @@ class DataModule(L.LightningDataModule):
         root: str | Path | None = None,
         batch_size: int = 2,
         num_workers: int = 4,
+        augmentation: LesionAugmentation | None = None,
     ) -> None:
         super().__init__()
         self.manifest = manifest
         self.root = Path(root) if root is not None else None
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.augmentation = augmentation
         self.label_map = DEFAULT_LABEL_MAP
         self.splits = None
 
@@ -53,17 +57,18 @@ class DataModule(L.LightningDataModule):
         if self.splits is None:
             patients = sorted({r["patient_id"] for r in self.records})
             order = np.random.permutation(patients).tolist()
-            n_train, n_val = int(0.7 * len(order)), int(0.1 * len(order))
+            n_train = int(0.8 * len(order))
             self.splits = {
                 "train": order[:n_train],
-                "val": order[n_train : n_train + n_val],
-                "test": order[n_train + n_val :],
+                "val": order[n_train:],
             }
         root = self.root if self.root is not None else Path(manifest["dataset_root"])
         self.datasets = {
             split: LesionDataset(
                 [r for r in self.records if r["patient_id"] in group],
                 root,
+                augmentation=self.augmentation if split == "train" else None,
+                spacing_xyz=tuple(manifest["preprocessing"]["spacing_mm"]),
             )
             for split, group in self.splits.items()
         }
@@ -75,18 +80,37 @@ class DataModule(L.LightningDataModule):
             for s in r["scans"]
             if self.label_map[s["label"]] >= 0
         ]
-        return torch.bincount(torch.tensor(labels, dtype=torch.long), minlength=3)
+        return torch.bincount(
+            torch.tensor(labels, dtype=torch.long), minlength=len(CLASS_NAMES)
+        )
 
     def _dataloader(self, split: str) -> DataLoader:
+        dataset = self.datasets[split]
+        batching = {"batch_size": self.batch_size}
+        if split == "train":
+            class_counts = torch.zeros(
+                (len(dataset), len(CLASS_NAMES)), dtype=torch.long
+            )
+            for index, record in enumerate(dataset.records):
+                for scan in record["scans"]:
+                    label = self.label_map[scan["label"]]
+                    if label >= 0:
+                        class_counts[index, label] += 1
+            batching = {
+                "batch_sampler": StratifiedLesionBatchSampler(
+                    RandomSampler(dataset),
+                    batch_size=self.batch_size,
+                    drop_last=False,
+                    class_counts=class_counts,
+                )
+            }
         return DataLoader(
-            self.datasets[split],
-            batch_size=self.batch_size,
-            shuffle=split == "train",
+            dataset,
+            **batching,
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
             pin_memory=torch.cuda.is_available(),
             collate_fn=pack_lesions,
-            drop_last=split == "train",
         )
 
     def train_dataloader(self) -> DataLoader:
@@ -94,6 +118,3 @@ class DataModule(L.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         return self._dataloader("val")
-
-    def test_dataloader(self) -> DataLoader:
-        return self._dataloader("test")

@@ -35,7 +35,6 @@ class MetaArch(lightning.LightningModule):
         )
 
         self.val_metrics = ScanClassificationMetrics(num_classes=len(CLASS_NAMES))
-        self.test_metrics = ScanClassificationMetrics(num_classes=len(CLASS_NAMES))
 
     def forward(self, batch: dict) -> Tensor:
         """Encode stacked N,C,Z,Y,X crops and return one class-logit row per MRI."""
@@ -68,10 +67,6 @@ class MetaArch(lightning.LightningModule):
         logits = self(batch)
         self.val_metrics.update(logits, batch["labels"], batch["sample_ids"])
 
-    def test_step(self, batch: dict) -> None:
-        logits = self(batch)
-        self.test_metrics.update(logits, batch["labels"], batch["sample_ids"])
-
     def on_validation_epoch_end(self) -> None:
         values = self.val_metrics.compute()
         self.log_dict(
@@ -91,26 +86,6 @@ class MetaArch(lightning.LightningModule):
             on_epoch=True,
         )
         self.val_metrics.reset()
-
-    def on_test_epoch_end(self) -> None:
-        values = self.test_metrics.compute()
-        self.log_dict(
-            {
-                f"test/{key}": values[key]
-                for key in ("loss", "accuracy", "macro_f1", "balanced_accuracy")
-            },
-            prog_bar=True,
-        )
-        self.log_dict(
-            {
-                f"test/{metric}/{class_name}": values[metric][index]
-                for metric in ("precision", "recall")
-                for index, class_name in enumerate(CLASS_NAMES)
-            },
-            on_step=False,
-            on_epoch=True,
-        )
-        self.test_metrics.reset()
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         optimizer = torch.optim.AdamW(
