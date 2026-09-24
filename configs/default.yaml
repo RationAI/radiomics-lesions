@@ -18,7 +18,7 @@ trainer:
       _target_: lightning.pytorch.callbacks.ModelCheckpoint
       save_top_k: 1
       save_last: true
-      monitor: val/macro_f1
+      monitor: validation/macro_f1
       mode: max
     finetune:
       _target_: lightning.pytorch.callbacks.BackboneFinetuning
