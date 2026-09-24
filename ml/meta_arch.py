@@ -25,6 +25,7 @@ class MetaArch(lightning.LightningModule):
         super().__init__()
         self.dim = dim
         self.warmup_epochs = warmup_epochs
+        self.register_buffer("class_weights", torch.tensor([1.0, 2.0]))
         self.backbone = DinoV3D().eval()
         self.proj = nn.Sequential(nn.Linear(792, dim))
         self.radiation_encoder = RadiationEncoder(dim)
@@ -52,7 +53,7 @@ class MetaArch(lightning.LightningModule):
 
     def training_step(self, batch: dict) -> Tensor:
         logits = self(batch)
-        loss = F.cross_entropy(logits, batch["labels"])
+        loss = F.cross_entropy(logits, batch["labels"], weight=self.class_weights)
         self.log(
             "train/loss",
             loss,

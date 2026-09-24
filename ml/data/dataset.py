@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import Dataset
 
 
-CLASS_NAMES = ("healthy", "PD", "PSP")
+CLASS_NAMES = ("healthy", "PD")
 LABEL_MAP = {
     "MTS": 0,
     "KAVITA": 0,
